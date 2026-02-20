@@ -30,17 +30,14 @@ stages:
 
           - script: pip install -r requirements.txt
             displayName: "Install dependencies"
-
           - script: |
               mkdir -p models mlflow/mlruns
+              export MLFLOW_TRACKING_URI=$(pwd)/mlflow/mlruns
               python src/train.py
-            displayName: "Train model with MLflow"
+            displayName: "Train model"
             env:
               MODEL_PATH: $(MODEL_PATH)
-              MLFLOW_TRACKING_URI: $(Build.SourcesDirectory)/mlflow/mlruns
               ACCURACY_THRESHOLD: $(ACCURACY_THRESHOLD)
-
-
           - script: |
               python -c "
               import json
