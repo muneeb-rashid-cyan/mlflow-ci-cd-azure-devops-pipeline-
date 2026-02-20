@@ -1,6 +1,7 @@
 import os
 import json
 import pickle
+import pathlib
 import numpy as np
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
@@ -9,6 +10,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.preprocessing import StandardScaler
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "models/trained_model.pkl")
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI",str(pathlib.Path(__file__).parent.parent / "mlflow" / "mlruns"))
 MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "./mlflow/mlruns")
 ACCURACY_THRESHOLD = float(os.environ.get("ACCURACY_THRESHOLD", "0.85"))
 
