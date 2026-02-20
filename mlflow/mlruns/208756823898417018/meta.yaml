@@ -1,0 +1,7 @@
+artifact_location: file:///C:/Users/Asus/Documents/Azure_Mlops_Hands_On/P6-MLFlow-FastAPI-Docker-AzurePipeline/IrisOps/mlflow/mlruns/208756823898417018
+creation_time: 1771608615214
+experiment_id: '208756823898417018'
+last_update_time: 1771608615214
+lifecycle_stage: active
+name: iris-classifier
+workspace: default

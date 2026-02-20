@@ -1,0 +1,23 @@
+artifact_path: file:///C:/Users/Asus/Documents/Azure_Mlops_Hands_On/P6-MLFlow-FastAPI-Docker-AzurePipeline/IrisOps/mlflow/mlruns/208756823898417018/models/m-f4b30409672b4481a1dc8a320875defe/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.11.9
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.10.0
+model_id: m-f4b30409672b4481a1dc8a320875defe
+model_size_bytes: 153519
+model_uuid: m-f4b30409672b4481a1dc8a320875defe
+prompts: null
+run_id: a6bef96167f047cbb0e3b0827f19428e
+utc_time_created: '2026-02-20 17:30:17.159282'

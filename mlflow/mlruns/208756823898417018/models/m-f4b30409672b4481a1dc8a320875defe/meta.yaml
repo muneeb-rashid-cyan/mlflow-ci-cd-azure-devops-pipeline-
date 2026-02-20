@@ -1,0 +1,10 @@
+artifact_location: file:///C:/Users/Asus/Documents/Azure_Mlops_Hands_On/P6-MLFlow-FastAPI-Docker-AzurePipeline/IrisOps/mlflow/mlruns/208756823898417018/models/m-f4b30409672b4481a1dc8a320875defe/artifacts
+creation_timestamp: 1771608617058
+experiment_id: '208756823898417018'
+last_updated_timestamp: 1771608623269
+model_id: m-f4b30409672b4481a1dc8a320875defe
+model_type: null
+name: model
+source_run_id: a6bef96167f047cbb0e3b0827f19428e
+status: 2
+status_message: null

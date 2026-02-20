@@ -1,0 +1,227 @@
+trigger:
+  branches:
+    include:
+      - main
+      - dev
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  PYTHON_VERSION: "3.11"
+  MODEL_PATH: "models/trained_model.pkl"
+  ACCURACY_THRESHOLD: "0.85"
+  DOCKER_IMAGE_NAME: "iris-classifier"
+  # Set DOCKER_HUB_USERNAME in pipeline variables (not here)
+
+# ──────────────────────────────────────────────────
+# STAGE 1: TRAIN
+# ──────────────────────────────────────────────────
+stages:
+  - stage: Train
+    displayName: "🧠 Train Model"
+    jobs:
+      - job: TrainModel
+        displayName: "Train + MLflow Tracking"
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: pip install -r requirements.txt
+            displayName: "Install dependencies"
+
+          - script: |
+              mkdir -p models mlflow/mlruns
+              python src/train.py
+            displayName: "Train model with MLflow"
+            env:
+              MODEL_PATH: $(MODEL_PATH)
+              MLFLOW_TRACKING_URI: mlflow/mlruns
+              ACCURACY_THRESHOLD: $(ACCURACY_THRESHOLD)
+
+          - script: |
+              python -c "
+              import json
+              with open('models/metrics.json') as f:
+                  m = json.load(f)
+              acc = m['accuracy']
+              print(f'##vso[task.setvariable variable=MODEL_ACCURACY;isOutput=true]{acc:.4f}')
+              print(f'Model accuracy: {acc:.4f}')
+              "
+            displayName: "Extract accuracy for tagging"
+            name: SetAccuracy
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: models/
+              artifact: trained-model
+            displayName: "Publish model artifact"
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: mlflow/
+              artifact: mlflow-runs
+            displayName: "Publish MLflow runs"
+
+# ──────────────────────────────────────────────────
+# STAGE 2: TEST
+# ──────────────────────────────────────────────────
+  - stage: Test
+    displayName: "🧪 Test"
+    dependsOn: Train
+    condition: succeeded()
+    jobs:
+      - job: RunTests
+        displayName: "Unit + API Tests"
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: pip install -r requirements.txt
+            displayName: "Install dependencies"
+
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: trained-model
+              path: models/
+            displayName: "Download trained model"
+
+          - script: |
+              pytest tests/test_model.py tests/test_api.py \
+                --cov=src \
+                --cov-report=xml:coverage.xml \
+                --cov-report=term-missing \
+                --cov-fail-under=80 \
+                --junitxml=test-results.xml \
+                -v
+            displayName: "Run tests with coverage"
+            env:
+              MODEL_PATH: $(MODEL_PATH)
+
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: test-results.xml
+            condition: always()
+            displayName: "Publish test results"
+
+          - task: PublishCodeCoverageResults@1
+            inputs:
+              codeCoverageTool: Cobertura
+              summaryFileLocation: coverage.xml
+            condition: always()
+            displayName: "Publish coverage"
+
+# ──────────────────────────────────────────────────
+# STAGE 3: BUILD
+# ──────────────────────────────────────────────────
+  - stage: Build
+    displayName: "🐳 Build Docker Image"
+    dependsOn:
+      - Train
+      - Test
+    condition: succeeded()
+    variables:
+      MODEL_ACCURACY: $[ stageDependencies.Train.TrainModel.outputs['SetAccuracy.MODEL_ACCURACY'] ]
+    jobs:
+      - job: BuildDocker
+        displayName: "Build + Health Check"
+        steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: trained-model
+              path: models/
+            displayName: "Download trained model"
+
+          - script: |
+              IMAGE_TAG="$(Build.BuildId)-acc$(MODEL_ACCURACY)"
+              echo "Building image: $(DOCKER_IMAGE_NAME):${IMAGE_TAG}"
+              docker build -t $(DOCKER_IMAGE_NAME):${IMAGE_TAG} -t $(DOCKER_IMAGE_NAME):latest .
+              echo "##vso[task.setvariable variable=IMAGE_TAG;isOutput=true]${IMAGE_TAG}"
+            displayName: "Build Docker image"
+            name: BuildImage
+
+          - script: |
+              docker run -d --name test-container -p 8000:8000 $(DOCKER_IMAGE_NAME):latest
+              sleep 10
+              curl -f http://localhost:8000/health || (docker logs test-container && exit 1)
+              docker stop test-container && docker rm test-container
+            displayName: "Container health check"
+
+# ──────────────────────────────────────────────────
+# STAGE 4: PUBLISH
+# ──────────────────────────────────────────────────
+  - stage: Publish
+    displayName: "📦 Publish to Docker Hub"
+    dependsOn:
+      - Train
+      - Test
+      - Build
+    condition: |
+      and(
+        succeeded(),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      )
+    variables:
+      MODEL_ACCURACY: $[ stageDependencies.Train.TrainModel.outputs['SetAccuracy.MODEL_ACCURACY'] ]
+      IMAGE_TAG: $[ stageDependencies.Build.BuildDocker.outputs['BuildImage.IMAGE_TAG'] ]
+    jobs:
+      - job: PushImage
+        displayName: "Push to Docker Hub"
+        steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: trained-model
+              path: models/
+            displayName: "Download trained model"
+
+          - script: |
+              docker build \
+                -t $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):latest \
+                -t $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):$(Build.BuildId) \
+                -t $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):acc-$(MODEL_ACCURACY) \
+                .
+            displayName: "Build final tagged images"
+
+          - task: Docker@2
+            inputs:
+              containerRegistry: "DockerHubServiceConnection"
+              command: login
+            displayName: "Login to Docker Hub"
+
+          - script: |
+              docker push $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):latest
+              docker push $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):$(Build.BuildId)
+              docker push $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):acc-$(MODEL_ACCURACY)
+              echo ""
+              echo "✅ Published images:"
+              echo "  $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):latest"
+              echo "  $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):$(Build.BuildId)"
+              echo "  $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):acc-$(MODEL_ACCURACY)"
+            displayName: "Push all tags"
+
+          - script: |
+              cat > deployment-manifest.json << EOF
+              {
+                "image": "$(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):latest",
+                "build_id": "$(Build.BuildId)",
+                "accuracy": "$(MODEL_ACCURACY)",
+                "timestamp": "$(Build.SourceVersionMessage)",
+                "deployment_options": {
+                  "azure_container_instances": "az container create --resource-group <rg> --name iris-api --image $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):latest --ports 8000",
+                  "docker_run": "docker run -p 8000:8000 $(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):latest",
+                  "kubernetes": "kubectl create deployment iris-api --image=$(DOCKER_HUB_USERNAME)/$(DOCKER_IMAGE_NAME):latest"
+                }
+              }
+              EOF
+              cat deployment-manifest.json
+            displayName: "Generate deployment manifest"
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: deployment-manifest.json
+              artifact: deployment-manifest
+            displayName: "Publish deployment manifest"
+            
