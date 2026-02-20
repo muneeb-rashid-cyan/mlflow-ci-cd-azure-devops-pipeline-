@@ -37,8 +37,9 @@ stages:
             displayName: "Train model with MLflow"
             env:
               MODEL_PATH: $(MODEL_PATH)
-              MLFLOW_TRACKING_URI: mlflow/mlruns
+              MLFLOW_TRACKING_URI: $(Build.SourcesDirectory)/mlflow/mlruns
               ACCURACY_THRESHOLD: $(ACCURACY_THRESHOLD)
+
 
           - script: |
               python -c "
@@ -224,4 +225,3 @@ stages:
               targetPath: deployment-manifest.json
               artifact: deployment-manifest
             displayName: "Publish deployment manifest"
-            

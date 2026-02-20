@@ -9,7 +9,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.preprocessing import StandardScaler
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "models/trained_model.pkl")
-MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "mlflow/mlruns")
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "./mlflow/mlruns")
 ACCURACY_THRESHOLD = float(os.environ.get("ACCURACY_THRESHOLD", "0.85"))
 
 # MLflow is optional — gracefully degrade if not installed
